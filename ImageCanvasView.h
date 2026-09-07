@@ -40,6 +40,7 @@
 #include "RecipeIO.h"
 #include "ToolbarController.h"
 #include "DetectionResultModel.h"
+#include "ResultRenderer.h"
 #include "ITool.h"
 
 class QDockWidget;
@@ -159,6 +160,10 @@ private:
 	DetectionResultModel m_detectModel;                 /*  结果宿主：多结果/多实例的数据层 */
 	QList<QGraphicsRectItem*> m_detectResultItems;      /*  叠层：结果框 */
 	QList<QGraphicsSimpleTextItem*> m_detectResultLabels; /*  叠层：结果标签 */
+
+	/*  结果渲染层（数据/渲染分离）：读 AlgorithmResult 只读视图 → 画到场景。
+	 *  统一了检测/定位/卡尺的叠层，按结果类型分派画法；不写回数据。 */
+	ResultRenderer* m_resultRenderer = nullptr;
 
 	/*  ====================== 绘制模式临时状态 ====================== */
 	enum InteractionMode { Mode_View, Mode_Draw, Mode_None };

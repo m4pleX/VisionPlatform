@@ -59,6 +59,7 @@ ImageCanvasView::ImageCanvasView(QWidget* parent)
 	m_imageSource.id = QStringLiteral("image0");
 
 	m_scene = new QGraphicsScene(this);
+	m_resultRenderer = new ResultRenderer(m_scene);
 	m_painter = new ShapePainter(m_scene);
 	m_handleHelper = new ShapeHandleHelper(m_scene);
 	m_activeHandleSet = new ShapeHandleSet();
@@ -158,6 +159,8 @@ ImageCanvasView::~ImageCanvasView() {
 	// 不依赖 m_scene 的隐式析构。此处 m_scene 仍存活（parent 为本类，子对象稍后才销毁）。
 	m_detectModel.clear();
 	clearDetectResultOverlay();
+	// 结果渲染层：先 clear 其图元，再释放（场景 m_scene 仍存活）。
+	delete m_resultRenderer;
 }
 
 // ===== 事件处理 =====
@@ -1084,6 +1087,7 @@ bool ImageCanvasView::loadImageFromPath(const QString& path)
 	// 覆盖 slotLoadImage（换图）与 slotLoadRecipe（加载方案）两个场景。
 	m_detectModel.clear();
 	clearDetectResultOverlay();
+	if (m_resultRenderer) m_resultRenderer->clear();   /*  同样清掉流程结果的叠层 */
 	// 扩展 sceneRect，在图片外留出充足空间，避免中键拖拽时被限制在图片边界内
 	const qreal pad = 10000.0;
 	m_scene->setSceneRect(pixmap.rect().adjusted(-pad, -pad, pad, pad));
@@ -2176,6 +2180,15 @@ void ImageCanvasView::slotRunFlow()
 		const int total = d.detections.size() + d.poses.size() + d.geometry.size();
 		lines << QStringLiteral("%1：产出 %2 项").arg(s.algorithm).arg(total);
 	}
+
+	// 【结果渲染】把本次流程产出的全部结果（按步骤顺序）喂给结果渲染层统一画到画布。
+	// 数据/渲染分离：渲染器只读消费 AlgorithmResult，不写回；结果仍在 ctx.results / m_detectModel。
+	QList<AlgorithmResult> allResults;
+	allResults.reserve(steps.size());
+	for (const ToolStep& s : steps)
+		if (ctx.results.contains(s.id))
+			allResults.append(ctx.results.value(s.id));
+	m_resultRenderer->render(allResults);
 
 	QMessageBox::information(this, QStringLiteral("运行流程完成"), lines.join("\n"));
 }

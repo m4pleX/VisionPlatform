@@ -25,6 +25,8 @@ add_executable(VisionPlatform
         InspectionItem.h
         RecipeIO.cpp
         RecipeIO.h
+        ResultRenderer.cpp
+        ResultRenderer.h
         CvImageConverter.cpp
         CvImageConverter.h
         DetectionResultModel.cpp
