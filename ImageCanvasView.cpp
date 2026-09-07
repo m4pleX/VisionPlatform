@@ -150,8 +150,7 @@ ImageCanvasView::~ImageCanvasView() {
 	delete m_handleHelper;
 	delete m_activeHandleSet;
 	delete m_toolbar;
-	qDeleteAll(m_shapes);
-	m_shapes.clear();
+	// m_shapes 为值容器，随本类析构自动释放，无需手动 delete。
 	// 显式清理检测结果：数据层清空 + 渲染层销毁（removeItem + delete），
 	// 不依赖 m_scene 的隐式析构。此处 m_scene 仍存活（parent 为本类，子对象稍后才销毁）。
 	m_detectModel.clear();
@@ -666,7 +665,7 @@ bool ImageCanvasView::eventFilter(QObject* obj, QEvent* event)
 				if (m_isRotating)
 				{
 					m_isRotating = false;
-					m_dragShape = nullptr;
+					m_dragShapeIndex = -1;
 					m_dragHandleIndex = -1;
 					ui.canvas_view_main->setCursor(Qt::CrossCursor);
 					event->accept();
@@ -675,7 +674,7 @@ bool ImageCanvasView::eventFilter(QObject* obj, QEvent* event)
 				if (m_isDraggingHandle)
 				{
 					m_isDraggingHandle = false;
-					m_dragShape = nullptr;
+					m_dragShapeIndex = -1;
 					m_dragHandleIndex = -1;
 					ui.canvas_view_main->setCursor(Qt::CrossCursor);
 					event->accept();
@@ -705,96 +704,96 @@ bool ImageCanvasView::eventFilter(QObject* obj, QEvent* event)
 		}
 
 		// 旋转拖拽中
-		if (m_isRotating && event->type() == QEvent::MouseMove)
+		if (m_isRotating && event->type() == QEvent::MouseMove && m_dragShapeIndex >= 0)
 		{
 			{
+				DrawShapeItem& ds = m_shapes[m_dragShapeIndex];
 				EditContext ctx{ m_dragStartRect, m_dragHandleIndex, m_isRotating, m_isDraggingHandle, m_dragStartAngle };
 				bool changed = false;
-				if (m_dragShape && m_dragShape->type == Shape_Ellipse)
-					changed = ShapeEditor::updateEllipse(m_dragShape, ctx, scenePos);
-				else if (m_dragShape && m_dragShape->type == Shape_Arc)
-					changed = ShapeEditor::updateArc(m_dragShape, ctx, scenePos);
+				if (ds.type == Shape_Ellipse)
+					changed = ShapeEditor::updateEllipse(&ds, ctx, scenePos);
+				else if (ds.type == Shape_Arc)
+					changed = ShapeEditor::updateArc(&ds, ctx, scenePos);
 				else
-					changed = ShapeEditor::updateRotatedRect(m_dragShape, ctx, scenePos);
+					changed = ShapeEditor::updateRotatedRect(&ds, ctx, scenePos);
 				if (changed) refreshActiveShape();
 			}
 			event->accept();
 			return true;
 		}
 		// Handle 拖拽中
-			if (m_isDraggingHandle && event->type() == QEvent::MouseMove)
+			if (m_isDraggingHandle && event->type() == QEvent::MouseMove && m_dragShapeIndex >= 0)
 			{
 				{
+					DrawShapeItem& ds = m_shapes[m_dragShapeIndex];
 					EditContext ctx{ m_dragStartRect, m_dragHandleIndex, m_isRotating, m_isDraggingHandle, m_dragStartAngle };
 					bool changed = false;
-					if (m_dragShape && m_dragShape->type == Shape_RotateRect)
-						changed = ShapeEditor::updateRotatedRect(m_dragShape, ctx, scenePos);
-					else if (m_dragShape && m_dragShape->type == Shape_Circle)
-						changed = ShapeEditor::updateCircle(m_dragShape, ctx, scenePos);
-					else if (m_dragShape && m_dragShape->type == Shape_Ellipse)
-						changed = ShapeEditor::updateEllipse(m_dragShape, ctx, scenePos);
-					else if (m_dragShape && m_dragShape->type == Shape_Ring)
-						changed = ShapeEditor::updateRing(m_dragShape, ctx, scenePos);
-					else if (m_dragShape && m_dragShape->type == Shape_Arc)
-						changed = ShapeEditor::updateArc(m_dragShape, ctx, scenePos);
-					else if (m_dragShape && m_dragShape->type == Shape_Polygon)
-						changed = ShapeEditor::updatePolygon(m_dragShape, ctx, scenePos);
+					if (ds.type == Shape_RotateRect)
+						changed = ShapeEditor::updateRotatedRect(&ds, ctx, scenePos);
+					else if (ds.type == Shape_Circle)
+						changed = ShapeEditor::updateCircle(&ds, ctx, scenePos);
+					else if (ds.type == Shape_Ellipse)
+						changed = ShapeEditor::updateEllipse(&ds, ctx, scenePos);
+					else if (ds.type == Shape_Ring)
+						changed = ShapeEditor::updateRing(&ds, ctx, scenePos);
+					else if (ds.type == Shape_Arc)
+						changed = ShapeEditor::updateArc(&ds, ctx, scenePos);
+					else if (ds.type == Shape_Polygon)
+						changed = ShapeEditor::updatePolygon(&ds, ctx, scenePos);
 					else
-						changed = ShapeEditor::updateRect(m_dragShape, ctx, scenePos);
+						changed = ShapeEditor::updateRect(&ds, ctx, scenePos);
 					if (changed) refreshActiveShape();
 				}
 				event->accept();
 				return true;
 			}
 		// 形状拖动中
-		if (m_isDraggingShape && event->type() == QEvent::MouseMove)
+		if (m_isDraggingShape && event->type() == QEvent::MouseMove && m_activeShapeIndex >= 0)
 		{
-			if (m_activeShape)
+			DrawShapeItem& shape = m_shapes[m_activeShapeIndex];
+			if (shape.type == Shape_Rect)
 			{
-				if (m_activeShape->type == Shape_Rect)
-				{
-					m_activeShape->cx = scenePos.x() - m_dragOffset.x();
-					m_activeShape->cy = scenePos.y() - m_dragOffset.y();
-				}
-				else if (m_activeShape->type == Shape_RotateRect)
-				{
-					m_activeShape->cx = scenePos.x() - m_dragOffset.x();
-					m_activeShape->cy = scenePos.y() - m_dragOffset.y();
-				}
-				else if (m_activeShape->type == Shape_Circle)
-				{
-					m_activeShape->cx = scenePos.x() - m_dragOffset.x();
-					m_activeShape->cy = scenePos.y() - m_dragOffset.y();
-				}
-				else if (m_activeShape->type == Shape_Ellipse)
-				{
-					m_activeShape->cx = scenePos.x() - m_dragOffset.x();
-					m_activeShape->cy = scenePos.y() - m_dragOffset.y();
-				}
-				else if (m_activeShape->type == Shape_Ring)
-				{
-					m_activeShape->cx = scenePos.x() - m_dragOffset.x();
-					m_activeShape->cy = scenePos.y() - m_dragOffset.y();
-				}
-				else if (m_activeShape->type == Shape_Arc)
-				{
-					m_activeShape->cx = scenePos.x() - m_dragOffset.x();
-					m_activeShape->cy = scenePos.y() - m_dragOffset.y();
-				}
-				else if (m_activeShape->type == Shape_Polygon)
-				{
-					double dx = scenePos.x() - m_dragOffset.x() - m_activeShape->pts[0].x();
-					double dy = scenePos.y() - m_dragOffset.y() - m_activeShape->pts[0].y();
-					for(auto& pt:m_activeShape->pts){pt.rx()+=dx;pt.ry()+=dy;}
-				}
-				else
-				{
-					m_activeShape->cx = scenePos.x() - m_dragOffset.x();
-					m_activeShape->cy = scenePos.y() - m_dragOffset.y();
-				}
-				syncParamPanel(m_activeShape);
-				m_handleHelper->updatePositions(*m_activeShape, *m_activeHandleSet, m_shapeItem);
+				shape.cx = scenePos.x() - m_dragOffset.x();
+				shape.cy = scenePos.y() - m_dragOffset.y();
 			}
+			else if (shape.type == Shape_RotateRect)
+			{
+				shape.cx = scenePos.x() - m_dragOffset.x();
+				shape.cy = scenePos.y() - m_dragOffset.y();
+			}
+			else if (shape.type == Shape_Circle)
+			{
+				shape.cx = scenePos.x() - m_dragOffset.x();
+				shape.cy = scenePos.y() - m_dragOffset.y();
+			}
+			else if (shape.type == Shape_Ellipse)
+			{
+				shape.cx = scenePos.x() - m_dragOffset.x();
+				shape.cy = scenePos.y() - m_dragOffset.y();
+			}
+			else if (shape.type == Shape_Ring)
+			{
+				shape.cx = scenePos.x() - m_dragOffset.x();
+				shape.cy = scenePos.y() - m_dragOffset.y();
+			}
+			else if (shape.type == Shape_Arc)
+			{
+				shape.cx = scenePos.x() - m_dragOffset.x();
+				shape.cy = scenePos.y() - m_dragOffset.y();
+			}
+			else if (shape.type == Shape_Polygon)
+			{
+				double dx = scenePos.x() - m_dragOffset.x() - shape.pts[0].x();
+				double dy = scenePos.y() - m_dragOffset.y() - shape.pts[0].y();
+				for(auto& pt:shape.pts){pt.rx()+=dx;pt.ry()+=dy;}
+			}
+			else
+			{
+				shape.cx = scenePos.x() - m_dragOffset.x();
+				shape.cy = scenePos.y() - m_dragOffset.y();
+			}
+			syncParamPanel(m_activeShapeIndex);
+			m_handleHelper->updatePositions(shape, *m_activeHandleSet, m_shapeItem);
 			event->accept();
 			return true;
 		}
@@ -816,8 +815,9 @@ bool ImageCanvasView::eventFilter(QObject* obj, QEvent* event)
 		if (event->type() == QEvent::MouseButtonPress)
 		{
 			QMouseEvent* me = static_cast<QMouseEvent*>(event);
-			if (me->button() == Qt::LeftButton && m_activeShape)
+			if (me->button() == Qt::LeftButton && m_activeShapeIndex >= 0)
 			{
+				DrawShapeItem& active = m_shapes[m_activeShapeIndex];
 				// 优先检测 handle
 				QGraphicsEllipseItem* hitHandle = handleAt(scenePos);
 				if (hitHandle)
@@ -827,12 +827,12 @@ bool ImageCanvasView::eventFilter(QObject* obj, QEvent* event)
 					if (role == 1) // 旋转控制点
 					{
 						m_isRotating = true;
-						m_dragShape = m_activeShape;
+						m_dragShapeIndex = m_activeShapeIndex;
 						m_dragHandleIndex = hIdx;
-						if (m_activeShape->type == Shape_Arc)
-							m_dragStartAngle = ShapeGeometry::normAngle360(m_activeShape->startAngle + m_activeShape->span / 2.0);
+						if (active.type == Shape_Arc)
+							m_dragStartAngle = ShapeGeometry::normAngle360(active.startAngle + active.span / 2.0);
 						else
-							m_dragStartAngle = m_activeShape->angle;
+							m_dragStartAngle = active.angle;
 						ui.canvas_view_main->setCursor(Qt::ClosedHandCursor);
 						event->accept();
 						return true;
@@ -840,68 +840,68 @@ bool ImageCanvasView::eventFilter(QObject* obj, QEvent* event)
 				if (hIdx >= 0 && m_activeHandleSet && hIdx < m_activeHandleSet->handles.size())
 				{
 					m_isDraggingHandle = true;
-					m_dragShape = m_activeShape;
+					m_dragShapeIndex = m_activeShapeIndex;
 					m_dragHandleIndex = hIdx;
-					if (m_activeShape->type == Shape_RotateRect)
+					if (active.type == Shape_RotateRect)
 					{
-						m_dragStartRect = { m_activeShape->cx, m_activeShape->cy,
-						                    m_activeShape->w, m_activeShape->h };
-						m_dragStartAngle = m_activeShape->angle;
+						m_dragStartRect = { active.cx, active.cy,
+						                    active.w, active.h };
+						m_dragStartAngle = active.angle;
 					}
-					else if (m_activeShape->type == Shape_Circle)
-						m_dragStartRect = { m_activeShape->cx, m_activeShape->cy,
-						                    m_activeShape->r * 2, m_activeShape->r * 2 };
-					else if (m_activeShape->type == Shape_Ellipse)
-						m_dragStartRect = { m_activeShape->cx, m_activeShape->cy,
-						                    m_activeShape->r * 2, m_activeShape->r2 * 2 };
-				else if (m_activeShape->type == Shape_Ring)
-				{
-					m_dragStartRect = { m_activeShape->cx, m_activeShape->cy,
-					                    m_activeShape->r * 2, m_activeShape->r2 * 2 };
-				}
-				else if (m_activeShape->type == Shape_Arc)
-				{
-					m_dragStartRect = { m_activeShape->cx, m_activeShape->cy,
-					                    m_activeShape->startAngle, m_activeShape->endAngle };
-				}
-				else if (m_activeShape->type == Shape_Polygon)
-				{
-					m_dragStartRect = { 0,0,0,0 };
-				}
-				else
-					m_dragStartRect = { m_activeShape->cx, m_activeShape->cy,
-					                    m_activeShape->w, m_activeShape->h };
-				ui.canvas_view_main->setCursor(Qt::ClosedHandCursor);
+					else if (active.type == Shape_Circle)
+						m_dragStartRect = { active.cx, active.cy,
+						                    active.r * 2, active.r * 2 };
+					else if (active.type == Shape_Ellipse)
+						m_dragStartRect = { active.cx, active.cy,
+						                    active.r * 2, active.r2 * 2 };
+					else if (active.type == Shape_Ring)
+					{
+						m_dragStartRect = { active.cx, active.cy,
+						                    active.r * 2, active.r2 * 2 };
+					}
+					else if (active.type == Shape_Arc)
+					{
+						m_dragStartRect = { active.cx, active.cy,
+						                    active.startAngle, active.endAngle };
+					}
+					else if (active.type == Shape_Polygon)
+					{
+						m_dragStartRect = { 0,0,0,0 };
+					}
+					else
+						m_dragStartRect = { active.cx, active.cy,
+						                    active.w, active.h };
+					ui.canvas_view_main->setCursor(Qt::ClosedHandCursor);
 						event->accept();
 						return true;
 					}
 				}
 
 				// 检测形状内部拖动
-			if (ShapeGeometry::contains(m_activeShape, scenePos))
+			if (ShapeGeometry::contains(&active, scenePos))
 			{
 			m_isDraggingShape = true;
-			if (m_activeShape->type == Shape_RotateRect)
-				m_dragOffset = QPointF(scenePos.x() - m_activeShape->cx,
-				                       scenePos.y() - m_activeShape->cy);
-			else if (m_activeShape->type == Shape_Circle)
-				m_dragOffset = QPointF(scenePos.x() - m_activeShape->cx,
-				                       scenePos.y() - m_activeShape->cy);
-			else if (m_activeShape->type == Shape_Ellipse)
-				m_dragOffset = QPointF(scenePos.x() - m_activeShape->cx,
-				                       scenePos.y() - m_activeShape->cy);
-			else if (m_activeShape->type == Shape_Ring)
-				m_dragOffset = QPointF(scenePos.x() - m_activeShape->cx,
-				                       scenePos.y() - m_activeShape->cy);
-			else if (m_activeShape->type == Shape_Arc)
-				m_dragOffset = QPointF(scenePos.x() - m_activeShape->cx,
-				                       scenePos.y() - m_activeShape->cy);
-			else if (m_activeShape->type == Shape_Polygon)
-				m_dragOffset = QPointF(scenePos.x() - m_activeShape->pts[0].x(),
-				                       scenePos.y() - m_activeShape->pts[0].y());
+			if (active.type == Shape_RotateRect)
+				m_dragOffset = QPointF(scenePos.x() - active.cx,
+				                       scenePos.y() - active.cy);
+			else if (active.type == Shape_Circle)
+				m_dragOffset = QPointF(scenePos.x() - active.cx,
+				                       scenePos.y() - active.cy);
+			else if (active.type == Shape_Ellipse)
+				m_dragOffset = QPointF(scenePos.x() - active.cx,
+				                       scenePos.y() - active.cy);
+			else if (active.type == Shape_Ring)
+				m_dragOffset = QPointF(scenePos.x() - active.cx,
+				                       scenePos.y() - active.cy);
+			else if (active.type == Shape_Arc)
+				m_dragOffset = QPointF(scenePos.x() - active.cx,
+				                       scenePos.y() - active.cy);
+			else if (active.type == Shape_Polygon)
+				m_dragOffset = QPointF(scenePos.x() - active.pts[0].x(),
+				                       scenePos.y() - active.pts[0].y());
 			else
-				m_dragOffset = QPointF(scenePos.x() - m_activeShape->cx,
-				                       scenePos.y() - m_activeShape->cy);
+				m_dragOffset = QPointF(scenePos.x() - active.cx,
+				                       scenePos.y() - active.cy);
 				event->accept();
 				return true;
 			}
@@ -924,14 +924,15 @@ bool ImageCanvasView::eventFilter(QObject* obj, QEvent* event)
 			{
 				// Handle hover
 				QGraphicsEllipseItem* hoverHandle = handleAt(scenePos);
-				if (hoverHandle && m_activeShape)
+				if (hoverHandle && m_activeShapeIndex >= 0)
 				{
 					ui.canvas_view_main->setCursor(Qt::SizeAllCursor);
 				}
 				else
 				{
 					// 形状本体悬停加粗
-					bool nowHovered = m_activeShape && ShapeGeometry::contains(m_activeShape, scenePos);
+					bool nowHovered = m_activeShapeIndex >= 0
+						&& ShapeGeometry::contains(&m_shapes[m_activeShapeIndex], scenePos);
 					if (nowHovered != m_isShapeHovered) {
 						applyShapeHover(nowHovered);
 						m_isShapeHovered = nowHovered;
@@ -958,13 +959,12 @@ void ImageCanvasView::keyPressEvent(QKeyEvent* event)
 		return;
 	}
 
-	if (event->key() == Qt::Key_Delete && m_activeShape)
+	if (event->key() == Qt::Key_Delete && m_activeShapeIndex >= 0)
 	{
 		clearSceneShape();
-		m_shapes.removeOne(m_activeShape);
-		delete m_activeShape;
+		m_shapes.removeAt(m_activeShapeIndex);
 		m_isShapeHovered = false;
-		m_activeShape = nullptr;
+		m_activeShapeIndex = -1;
 		return;
 	}
 
@@ -1110,8 +1110,8 @@ void ImageCanvasView::slotSaveRecipe()
 	if (filePath.isEmpty()) return;
 
 	QJsonArray shapeArr;
-	for (const DrawShapeItem* s : m_shapes)
-		shapeArr.append(RecipeIO::shapeToJson(*s));
+	for (const DrawShapeItem& s : m_shapes)
+		shapeArr.append(RecipeIO::shapeToJson(s));
 
 	QJsonObject sizeObj;
 	sizeObj["width"] = m_pixmapItem->pixmap().width();
@@ -1180,16 +1180,17 @@ void ImageCanvasView::slotLoadRecipe()
 	const QJsonArray shapeArr = root["shapes"].toArray();
 	for (const auto& v : shapeArr)
 	{
-		if (DrawShapeItem* s = RecipeIO::shapeFromJson(v.toObject()))
-			m_shapes.append(s);
+		DrawShapeItem s(Shape_Rect);
+		if (RecipeIO::shapeFromJson(v.toObject(), s))
+			m_shapes.append(std::move(s));
 	}
 
 	// 显示当前下拉框对应的图形（无则显示第一个）
 	int idx = ui.draw_cbox_shape_type->currentIndex();
-	DrawShapeItem* toShow = nullptr;
+	int toShow = -1;
 	if (idx > 0) toShow = findShapeByType(static_cast<DrawShapeType>(idx - 1));
-	if (!toShow && !m_shapes.isEmpty()) toShow = m_shapes.first();
-	if (toShow) { m_activeShape = toShow; rebuildShapeOnScene(toShow); }
+	if (toShow < 0 && !m_shapes.isEmpty()) toShow = 0;
+	if (toShow >= 0) { m_activeShapeIndex = toShow; rebuildShapeOnScene(toShow); }
 
 	QMessageBox::information(this, QStringLiteral("加载方案"),
 		QStringLiteral("已加载 %1 个几何方案").arg(m_shapes.size()));
@@ -1204,8 +1205,7 @@ void ImageCanvasView::slot_draw_shape_changed(int index)
 		if (m_mode == Mode_Draw) stopDraw();
 		clearSceneShape();
 		m_isShapeHovered = false;
-	m_activeShape = nullptr;
-		m_activeShapeIndex = 0;
+		m_activeShapeIndex = -1;
 		ui.canvas_view_main->setCursor(Qt::ArrowCursor);
 		return;
 	}
@@ -1213,18 +1213,17 @@ void ImageCanvasView::slot_draw_shape_changed(int index)
 	int shapeIdx = index - 1;
 	DrawShapeType type = static_cast<DrawShapeType>(shapeIdx);
 	m_currentShape = type;
-	m_activeShapeIndex = index;
 
 	// 先清掉 scene 上旧的
 	clearSceneShape();
 	m_isShapeHovered = false;
-	m_activeShape = nullptr;
+	m_activeShapeIndex = -1;
 
-	DrawShapeItem* existing = findShapeByType(type);
-	if (existing)
+	int existing = findShapeByType(type);
+	if (existing >= 0)
 	{
 		// 已有数据 → 重绘
-		m_activeShape = existing;
+		m_activeShapeIndex = existing;
 		rebuildShapeOnScene(existing);
 		ui.canvas_view_main->setCursor(Qt::ArrowCursor);
 	}
@@ -1241,15 +1240,14 @@ void ImageCanvasView::slotResetShape()
 	if (index <= 0) return;
 	DrawShapeType type = static_cast<DrawShapeType>(index - 1);
 
-	DrawShapeItem* shape = findShapeByType(type);
-	if (!shape) return;
+	int shapeIdx = findShapeByType(type);
+	if (shapeIdx < 0) return;
 
 	// 清除 scene + 从列表删除
 	clearSceneShape();
-	m_shapes.removeOne(shape);
+	m_shapes.removeAt(shapeIdx);
 	m_isShapeHovered = false;
-	m_activeShape = nullptr;
-	delete shape;
+	m_activeShapeIndex = -1;
 
 	// 进入绘制模式
 	startDraw(type);
@@ -1266,20 +1264,19 @@ void ImageCanvasView::clearSceneShape()
 void ImageCanvasView::clearAllShapes()
 {
 	clearSceneShape();
-	qDeleteAll(m_shapes);
 	m_shapes.clear();
-	m_activeShape = nullptr;
 	m_activeShapeIndex = -1;
 	m_isShapeHovered = false;
 }
 
-void ImageCanvasView::rebuildShapeOnScene(DrawShapeItem* shape)
+void ImageCanvasView::rebuildShapeOnScene(int shapeIndex)
 {
-	if (!shape) return;
-	m_shapeItem = m_painter->buildItem(*shape);
+	if (shapeIndex < 0 || shapeIndex >= m_shapes.size()) return;
+	const DrawShapeItem& shape = m_shapes.at(shapeIndex);
+	m_shapeItem = m_painter->buildItem(shape);
 	if (m_shapeItem) { m_scene->addItem(m_shapeItem); m_shapeItem->setAcceptHoverEvents(true); }
 	m_painter->applyStyle(m_shapeItem, m_colorSelected, m_penWidth, false);
-	if (m_activeHandleSet) m_handleHelper->rebuildHandles(*shape, *m_activeHandleSet);
+	if (m_activeHandleSet) m_handleHelper->rebuildHandles(shape, *m_activeHandleSet);
 	if (!m_showControlPoints && m_activeHandleSet)
 		m_handleHelper->setHandlesVisible(*m_activeHandleSet, false);
 }
@@ -1348,7 +1345,7 @@ void ImageCanvasView::showParamPanel() {
 	int index = ui.draw_cbox_shape_type->currentIndex();
 	if (index <= 0) return;
 	DrawShapeType type = static_cast<DrawShapeType>(index - 1);
-	DrawShapeItem* existing = findShapeByType(type);
+	int existingIdx = findShapeByType(type);
 
 	if (!m_paramPanel) {
 		m_paramPanel = new ParamPanelWidget(ui.group_draw_opt);
@@ -1357,26 +1354,28 @@ void ImageCanvasView::showParamPanel() {
 		connect(m_paramPanel, &ParamPanelWidget::cancelled,  this, &ImageCanvasView::hideParamPanel);
 		connect(m_paramPanel, &ParamPanelWidget::valueChanged, this, [this](){
 			int idx=ui.draw_cbox_shape_type->currentIndex(); if(idx<=0)return;
-			DrawShapeItem* s=findShapeByType(static_cast<DrawShapeType>(idx-1));
-			if(s) {
+			int si=findShapeByType(static_cast<DrawShapeType>(idx-1));
+			if(si>=0) {
+				DrawShapeItem& s=m_shapes[si];
 				QList<ParamField> fields;
-				if (s->type == Shape_Polygon) {
-					for (int i = 0; i < s->pts.size(); ++i) {
+				if (s.type == Shape_Polygon) {
+					for (int i = 0; i < s.pts.size(); ++i) {
 						int vi = i;
 						fields.append({QString(), -999999, 999999, [vi](const DrawShapeItem& a){return a.pts[vi].x();}, [vi](DrawShapeItem& a,double v){a.pts[vi].rx()=v;}});
 						fields.append({QString(), -999999, 999999, [vi](const DrawShapeItem& a){return a.pts[vi].y();}, [vi](DrawShapeItem& a,double v){a.pts[vi].ry()=v;}});
 					}
 				} else {
-					fields = ParamFieldFactory::buildFields(s->type);
+					fields = ParamFieldFactory::buildFields(s.type);
 				}
-				m_paramPanel->applyValues(fields, *s);
+				m_paramPanel->applyValues(fields, s);
 				if (m_shapeItem) { m_scene->removeItem(m_shapeItem); delete m_shapeItem; m_shapeItem = nullptr; }
 				if (m_activeHandleSet) m_handleHelper->clearHandles(*m_activeHandleSet);
-				rebuildShapeOnScene(s);
+				rebuildShapeOnScene(si);
 			}
 		});
 	}
 
+	DrawShapeItem* existing = (existingIdx >= 0) ? &m_shapes[existingIdx] : nullptr;
 	QList<ParamField> fields;
 	if (type == Shape_Polygon && existing) {
 		for (int i = 0; i < existing->pts.size(); ++i) {
@@ -1403,31 +1402,36 @@ void ImageCanvasView::showParamPanel() {
 
 void ImageCanvasView::hideParamPanel() { if (m_paramPanel) m_paramPanel->hide(); }
 
-void ImageCanvasView::syncParamPanel(DrawShapeItem* shape) {
-	if (!m_paramPanel || !shape) return;
+void ImageCanvasView::syncParamPanel(int shapeIndex) {
+	if (!m_paramPanel || shapeIndex < 0 || shapeIndex >= m_shapes.size()) return;
+	const DrawShapeItem& shape = m_shapes.at(shapeIndex);
 	QList<ParamField> fields;
-	if (shape->type == Shape_Polygon) {
-		for (int i = 0; i < shape->pts.size(); ++i) {
+	if (shape.type == Shape_Polygon) {
+		for (int i = 0; i < shape.pts.size(); ++i) {
 			int vi = i;
 			fields.append({QString(), -999999, 999999, [vi](const DrawShapeItem& a){return a.pts[vi].x();}, [vi](DrawShapeItem& a,double v){a.pts[vi].rx()=v;}});
 			fields.append({QString(), -999999, 999999, [vi](const DrawShapeItem& a){return a.pts[vi].y();}, [vi](DrawShapeItem& a,double v){a.pts[vi].ry()=v;}});
 		}
 	} else {
-		fields = ParamFieldFactory::buildFields(shape->type);
+		fields = ParamFieldFactory::buildFields(shape.type);
 	}
-	m_paramPanel->syncValues(fields, *shape);
+	m_paramPanel->syncValues(fields, shape);
 }
 
 void ImageCanvasView::applyParamAndRedraw() {
 	int index = ui.draw_cbox_shape_type->currentIndex();
 	if (index <= 0) return;
 	DrawShapeType type = static_cast<DrawShapeType>(index - 1);
-	DrawShapeItem* shape = findShapeByType(type);
-	if (!shape) { shape = new DrawShapeItem(type); m_shapes.append(shape); }
+	int shapeIdx = findShapeByType(type);
+	if (shapeIdx < 0) {
+		m_shapes.append(DrawShapeItem(type));
+		shapeIdx = m_shapes.size() - 1;
+	}
 
+	DrawShapeItem& shape = m_shapes[shapeIdx];
 	QList<ParamField> fields;
 	if (type == Shape_Polygon) {
-		for (int i = 0; i < shape->pts.size(); ++i) {
+		for (int i = 0; i < shape.pts.size(); ++i) {
 			int idx = i;
 			fields.append({QString(), -999999, 999999, [idx](const DrawShapeItem& s){return s.pts[idx].x();}, [idx](DrawShapeItem& s,double v){s.pts[idx].rx()=v;}});
 			fields.append({QString(), -999999, 999999, [idx](const DrawShapeItem& s){return s.pts[idx].y();}, [idx](DrawShapeItem& s,double v){s.pts[idx].ry()=v;}});
@@ -1435,11 +1439,11 @@ void ImageCanvasView::applyParamAndRedraw() {
 	} else {
 		fields = ParamFieldFactory::buildFields(type);
 	}
-	m_paramPanel->applyValues(fields, *shape);
+	m_paramPanel->applyValues(fields, shape);
 
 	clearSceneShape();
-	m_activeShape = shape;
-	rebuildShapeOnScene(shape);
+	m_activeShapeIndex = shapeIdx;
+	rebuildShapeOnScene(shapeIdx);
 	hideParamPanel();
 }
 
@@ -1511,13 +1515,14 @@ void ImageCanvasView::commitCircle()
 	double cx = r.center().x(), cy = r.center().y(), radius = r.width()/2.0;
 	if (radius < 1.5) return;
 
-	DrawShapeItem* shape = findShapeByType(Shape_Circle);
-	if (!shape) { shape = new DrawShapeItem(Shape_Circle); m_shapes.append(shape); }
-	shape->cx = cx; shape->cy = cy; shape->r = radius;
+	int shapeIdx = findShapeByType(Shape_Circle);
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Circle)); shapeIdx = m_shapes.size() - 1; }
+	DrawShapeItem& shape = m_shapes[shapeIdx];
+	shape.cx = cx; shape.cy = cy; shape.r = radius;
 
 	clearSceneShape();
-	m_activeShape = shape;
-	rebuildShapeOnScene(shape);
+	m_activeShapeIndex = shapeIdx;
+	rebuildShapeOnScene(shapeIdx);
 }
 
 // ===== 圆环提交（四点构造） =====
@@ -1534,13 +1539,14 @@ void ImageCanvasView::commitRing()
 	}
 	if (r1 < 1.5 || r2 < 1.5) return;
 
-	DrawShapeItem* shape = findShapeByType(Shape_Ring);
-	if (!shape) { shape = new DrawShapeItem(Shape_Ring); m_shapes.append(shape); }
-	shape->cx = cx; shape->cy = cy; shape->r = r1; shape->r2 = r2;
+	int shapeIdx = findShapeByType(Shape_Ring);
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Ring)); shapeIdx = m_shapes.size() - 1; }
+	DrawShapeItem& shape = m_shapes[shapeIdx];
+	shape.cx = cx; shape.cy = cy; shape.r = r1; shape.r2 = r2;
 
 	clearSceneShape();
-	m_activeShape = shape;
-	rebuildShapeOnScene(shape);
+	m_activeShapeIndex = shapeIdx;
+	rebuildShapeOnScene(shapeIdx);
 }
 
 // ===== 扇环提交 =====
@@ -1550,21 +1556,23 @@ void ImageCanvasView::commitArc()
 	r2=std::max(r2,2.0);if(r1<2.0||r2<2.0)return;
 	double aA=m_arcStartAngle,span=m_arcEndAngle;
 	double rOuter=std::max(r1,r2),rInner=std::min(r1,r2);
-	DrawShapeItem* shape=findShapeByType(Shape_Arc);
-	if(!shape){shape=new DrawShapeItem(Shape_Arc);m_shapes.append(shape);}
-	shape->cx=cx;shape->cy=cy;
-	shape->r=rOuter;shape->r2=rInner;
-	shape->startAngle=aA;shape->endAngle=aA+span;shape->span=span;
-	clearSceneShape();m_activeShape=shape;rebuildShapeOnScene(shape);
+	int shapeIdx=findShapeByType(Shape_Arc);
+	if(shapeIdx<0){m_shapes.append(DrawShapeItem(Shape_Arc));shapeIdx=m_shapes.size()-1;}
+	DrawShapeItem& shape=m_shapes[shapeIdx];
+	shape.cx=cx;shape.cy=cy;
+	shape.r=rOuter;shape.r2=rInner;
+	shape.startAngle=aA;shape.endAngle=aA+span;shape.span=span;
+	clearSceneShape();m_activeShapeIndex=shapeIdx;rebuildShapeOnScene(shapeIdx);
 }
 
 // ===== 多边形提交 =====
 void ImageCanvasView::commitPolygon()
 {
 	if(m_tempPolyPts.size()<3)return;
-	DrawShapeItem* shape=findShapeByType(Shape_Polygon);
-	if(!shape){shape=new DrawShapeItem(Shape_Polygon);m_shapes.append(shape);}
-	shape->pts=m_tempPolyPts;
+	int shapeIdx=findShapeByType(Shape_Polygon);
+	if(shapeIdx<0){m_shapes.append(DrawShapeItem(Shape_Polygon));shapeIdx=m_shapes.size()-1;}
+	DrawShapeItem& shape=m_shapes[shapeIdx];
+	shape.pts=m_tempPolyPts;
 	// 清理绘制标记
 	for(auto* mk:m_circleMarkers){m_scene->removeItem(mk);delete mk;}
 	m_circleMarkers.clear();
@@ -1573,7 +1581,7 @@ void ImageCanvasView::commitPolygon()
 	m_tempPolyPts.clear();
 	hideDrawModeOverlay();m_mode=Mode_None;m_drawStep=0;
 	ui.canvas_view_main->setCursor(Qt::ArrowCursor);
-	clearSceneShape();m_activeShape=shape;rebuildShapeOnScene(shape);
+	clearSceneShape();m_activeShapeIndex=shapeIdx;rebuildShapeOnScene(shapeIdx);
 }
 
 
@@ -1590,13 +1598,14 @@ void ImageCanvasView::commitRect()
 	double h = gr.height();
 	if (w < 3 || h < 3) return;
 
-	DrawShapeItem* shape = findShapeByType(Shape_Rect);
-	if (!shape) { shape = new DrawShapeItem(Shape_Rect); m_shapes.append(shape); }
-	shape->cx = cx; shape->cy = cy; shape->w = w; shape->h = h;
+	int shapeIdx = findShapeByType(Shape_Rect);
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Rect)); shapeIdx = m_shapes.size() - 1; }
+	DrawShapeItem& shape = m_shapes[shapeIdx];
+	shape.cx = cx; shape.cy = cy; shape.w = w; shape.h = h;
 
 	clearSceneShape();
-	m_activeShape = shape;
-	rebuildShapeOnScene(shape);
+	m_activeShapeIndex = shapeIdx;
+	rebuildShapeOnScene(shapeIdx);
 }
 
 void ImageCanvasView::commitRotatedRect()
@@ -1609,13 +1618,14 @@ void ImageCanvasView::commitRotatedRect()
 	double h  = gr.height();
 	if (w < 3 || h < 3) return;
 
-	DrawShapeItem* shape = findShapeByType(Shape_RotateRect);
-	if (!shape) { shape = new DrawShapeItem(Shape_RotateRect); m_shapes.append(shape); }
-	shape->cx = cx; shape->cy = cy; shape->w = w; shape->h = h; shape->angle = 0.0;
+	int shapeIdx = findShapeByType(Shape_RotateRect);
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_RotateRect)); shapeIdx = m_shapes.size() - 1; }
+	DrawShapeItem& shape = m_shapes[shapeIdx];
+	shape.cx = cx; shape.cy = cy; shape.w = w; shape.h = h; shape.angle = 0.0;
 
 	clearSceneShape();
-	m_activeShape = shape;
-	rebuildShapeOnScene(shape);
+	m_activeShapeIndex = shapeIdx;
+	rebuildShapeOnScene(shapeIdx);
 }
 
 // ===== 椭圆提交 =====
@@ -1627,13 +1637,14 @@ void ImageCanvasView::commitEllipse()
 	double r1 = gr.width()/2.0, r2 = gr.height()/2.0;
 	if (r1 < 1.5 || r2 < 1.5) return;
 
-	DrawShapeItem* shape = findShapeByType(Shape_Ellipse);
-	if (!shape) { shape = new DrawShapeItem(Shape_Ellipse); m_shapes.append(shape); }
-	shape->cx = cx; shape->cy = cy; shape->r = r1; shape->r2 = r2; shape->angle = 0.0;
+	int shapeIdx = findShapeByType(Shape_Ellipse);
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Ellipse)); shapeIdx = m_shapes.size() - 1; }
+	DrawShapeItem& shape = m_shapes[shapeIdx];
+	shape.cx = cx; shape.cy = cy; shape.r = r1; shape.r2 = r2; shape.angle = 0.0;
 
 	clearSceneShape();
-	m_activeShape = shape;
-	rebuildShapeOnScene(shape);
+	m_activeShapeIndex = shapeIdx;
+	rebuildShapeOnScene(shapeIdx);
 }
 
 // ===== 形状查询 =====
@@ -1647,11 +1658,11 @@ void ImageCanvasView::commitEllipse()
  *    2. commit* 系列改为"总是 new + 追加到 m_shapes"，而非 findShapeByType 复用；
  *    3. 本函数届时废弃或改语义为"返回全部同 type 实例"。
  */
-DrawShapeItem* ImageCanvasView::findShapeByType(DrawShapeType type)
+int ImageCanvasView::findShapeByType(DrawShapeType type)
 {
-	for (auto* s : m_shapes)
-		if (s->type == type) return s;
-	return nullptr;
+	for (int i = 0; i < m_shapes.size(); ++i)
+		if (m_shapes.at(i).type == type) return i;
+	return -1;
 }
 
 // ===== 图形构建 =====
@@ -1681,9 +1692,10 @@ void ImageCanvasView::applyShapeHover(bool hover)
 /*  拖拽编辑后统一刷新控制点位置与参数面板（等价于原 update*FromHandle 末尾副作用） */
 void ImageCanvasView::refreshActiveShape()
 {
-	if (!m_dragShape) return;
-	m_handleHelper->updatePositions(*m_dragShape, *m_activeHandleSet, m_shapeItem);
-	syncParamPanel(m_dragShape);
+	if (m_dragShapeIndex < 0 || m_dragShapeIndex >= m_shapes.size()) return;
+	DrawShapeItem& ds = m_shapes[m_dragShapeIndex];
+	m_handleHelper->updatePositions(ds, *m_activeHandleSet, m_shapeItem);
+	syncParamPanel(m_dragShapeIndex);
 }
 
 /* ===== 缺陷检测：运行算法，结果存入宿主并只读上屏 ===== */
@@ -1739,10 +1751,11 @@ void ImageCanvasView::slotRunDetect()
 	// ROI 裁剪：以当前选中 shape 作为检测区域（无选中/ROI 无效则回退整图）
 	cv::Mat sub;
 	QPoint roiOrigin(0, 0);   /*  ROI 子图相对整图的原点，用于结果坐标回贴 */
-	if (m_activeShape != nullptr)
+	if (m_activeShapeIndex >= 0)
 	{
+		const DrawShapeItem& active = m_shapes.at(m_activeShapeIndex);
 		QRect roi;
-		if (ShapeGeometry::cropRect(*m_activeShape, img.cols, img.rows, roi))
+		if (ShapeGeometry::cropRect(active, img.cols, img.rows, roi))
 		{
 			// clone() 深拷贝：与 img 完全隔离，检测器即便写输入也不波及原图
 			sub = img(cv::Rect(roi.x(), roi.y(), roi.width(), roi.height())).clone();
@@ -1946,9 +1959,9 @@ void ImageCanvasView::setupFlowDock()
 	m_flowTree->setDragDropMode(QAbstractItemView::InternalMove);   // 可拖拽排序
 	m_flowTree->setSelectionMode(QAbstractItemView::SingleSelection);
 
-	// 默认流程：先只放「检测」一步（最小有意义任务）。
-	// 定位/卡尺对图的要求与检测互相矛盾，不同时套入默认流程；
-	// 用户可按需通过后续的「增删工具」扩展。
+	// 默认流程：定位(blob) -> 检测(灰度缺陷) 顺序两步（端到端最小数据流）。
+	// 定位产出 Pose2D，检测吃 ROI 子图（当前为人工 ROI，未来由定位校正跟随）；
+	// 用户可按需通过拖拽排序 / 后续的「增删工具」扩展。
 	auto addTool = [this](ToolCategory cat, const QString& algo, const QString& display) {
 		QTreeWidgetItem* item = new QTreeWidgetItem();
 		item->setText(0, QStringLiteral("%1 · %2").arg(toolCategoryName(cat), display));
@@ -1958,7 +1971,8 @@ void ImageCanvasView::setupFlowDock()
 		m_flowTree->addTopLevelItem(item);
 	};
 
-	addTool(Category_Inspect, "grayDefect", QStringLiteral("灰度缺陷检测"));
+	addTool(Category_Locate,  "blobLocator", QStringLiteral("blob 定位"));
+	addTool(Category_Inspect, "grayDefect",  QStringLiteral("灰度缺陷检测"));
 
 	m_btnRunFlow = new QPushButton(QStringLiteral("运行流程"));
 
@@ -2004,9 +2018,10 @@ void ImageCanvasView::slotRunFlow()
 	// 图像句柄：shared_ptr<const cv::Mat>，只读引用贯穿（零拷贝，不复制像素）
 	auto imageMat = std::make_shared<cv::Mat>(CvImageConverter::toCvMat(qi));
 
-	// 只读上下文：图 + 用户几何（空）+ 上游结果（初始空）
+	// 只读上下文：图 + 用户几何（值拷贝：人工绘制的 ROI/基准线）+ 上游结果（初始空）
 	ToolContext ctx;
 	ctx.image = imageMat;
+	ctx.shapes = m_shapes;   // 值语义：直接拷贝，与 m_shapes 隔离（tools 侧只读）
 
 	QList<ToolStep> steps = collectSteps();
 	if (steps.isEmpty())

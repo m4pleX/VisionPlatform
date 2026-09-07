@@ -116,10 +116,12 @@ private:
 	QGraphicsLineItem* m_crossV = nullptr;
 
 	/*  ====================== 形状数据 ====================== */
-	QList<DrawShapeItem*> m_shapes;
-	DrawShapeItem*        m_activeShape      = nullptr;
-	DrawShapeType         m_currentShape     = Shape_Rect;
-	int                   m_activeShapeIndex = -1;
+	/*  【值语义数据模型】m_shapes 持有 DrawShapeItem 值（非指针），所有权/生命周期由容器统一管理；
+	 *   形状定位一律用【索引】（m_activeShapeIndex / m_dragShapeIndex，-1 = 无效），
+	 *   需原地修改几何处用 m_shapes[idx] 取引用；彻底消除散落的 new/delete 与悬垂指针风险。 */
+	QList<DrawShapeItem> m_shapes;          /*  值容器：多实例输入几何（ROI / 基准线） */
+	DrawShapeType        m_currentShape     = Shape_Rect;
+	int                  m_activeShapeIndex = -1;   /*  当前选中形状索引（-1 = 无选中） */
 
 	/*  渲染句柄（与 m_activeShape 对应的 QGraphicsItem + handle set） */
 	QGraphicsItem*  m_shapeItem       = nullptr;
@@ -178,7 +180,7 @@ private:
 	bool m_isRotating       = false;
 	bool m_isDraggingShape  = false;
 
-	DrawShapeItem*      m_dragShape       = nullptr;
+	int                 m_dragShapeIndex  = -1;   /*  正在拖拽的形状索引（-1 = 无） */
 	int                 m_dragHandleIndex = -1;
 	double              m_dragStartAngle  = 0;
 	ShapeDragRect       m_dragStartRect;
@@ -188,7 +190,7 @@ private:
 	/*  ====================== 方法 ====================== */
 	void clearSceneShape();
 	void clearAllShapes();
-	void rebuildShapeOnScene(DrawShapeItem* shape);
+	void rebuildShapeOnScene(int shapeIndex);
 	bool loadImageFromPath(const QString& path);
 
 	void showDrawModeOverlay();
@@ -200,7 +202,7 @@ private:
 	void showParamPanel();
 	void hideParamPanel();
 	void applyParamAndRedraw();
-	void syncParamPanel(DrawShapeItem* shape);
+	void syncParamPanel(int shapeIndex);
 
 	void startDraw(DrawShapeType type);
 	void stopDraw();
@@ -214,7 +216,8 @@ private:
 	void commitArc();
 	void commitPolygon();
 
-	DrawShapeItem* findShapeByType(DrawShapeType type);
+	/*  按类型查找形状索引（单实例模型：返回首个匹配，未找到返回 -1） */
+	int findShapeByType(DrawShapeType type);
 
 	QGraphicsEllipseItem* handleAt(const QPointF& scenePos) const;
 

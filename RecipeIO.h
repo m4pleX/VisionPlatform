@@ -28,8 +28,8 @@ public:
 	/*  单个形状 -> JSON 对象（含 type 标识） */
 	static QJsonObject shapeToJson(const DrawShapeItem& s);
 
-	/*  JSON 对象 -> 形状；解析失败返回 nullptr */
-	static DrawShapeItem* shapeFromJson(const QJsonObject& o);
+	/*  JSON 对象 -> 形状（值语义，由调用方持有）；解析失败返回 false */
+	static bool shapeFromJson(const QJsonObject& o, DrawShapeItem& out);
 
 	/*  检测项 -> JSON 对象（预留：供多算法/多 ROI 绑定使用） */
 	static QJsonObject itemToJson(const InspectionItem& item);

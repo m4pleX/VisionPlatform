@@ -1,6 +1,7 @@
 #include "RecipeIO.h"
 
 #include <QJsonArray>
+#include <utility>
 
 static const char* kTypeRect       = "rect";
 static const char* kTypeRotatedRect= "rotatedRect";
@@ -75,7 +76,7 @@ QJsonObject RecipeIO::shapeToJson(const DrawShapeItem& s)
 	return o;
 }
 
-DrawShapeItem* RecipeIO::shapeFromJson(const QJsonObject& o)
+bool RecipeIO::shapeFromJson(const QJsonObject& o, DrawShapeItem& out)
 {
 	const QString type = o["type"].toString();
 	DrawShapeType t;
@@ -86,43 +87,43 @@ DrawShapeItem* RecipeIO::shapeFromJson(const QJsonObject& o)
 	else if (type == kTypeRing)        t = Shape_Ring;
 	else if (type == kTypeArc)         t = Shape_Arc;
 	else if (type == kTypePolygon)     t = Shape_Polygon;
-	else return nullptr;
+	else return false;
 
-	DrawShapeItem* s = new DrawShapeItem(t);
+	DrawShapeItem s(t);
 	// 业务元信息：统一恢复（旧文件缺字段时用默认值兜底）
-	s->id      = o["id"].toString();
-	s->label   = o["label"].toString();
-	s->classId = o["classId"].toInt(-1);
-	s->sourceToolId = o["sourceToolId"].toString();
+	s.id      = o["id"].toString();
+	s.label   = o["label"].toString();
+	s.classId = o["classId"].toInt(-1);
+	s.sourceToolId = o["sourceToolId"].toString();
 	switch (t)
 	{
 	case Shape_Rect:
-		s->cx = o["cx"].toDouble(); s->cy = o["cy"].toDouble();
-		s->w  = o["w"].toDouble();  s->h  = o["h"].toDouble();
+		s.cx = o["cx"].toDouble(); s.cy = o["cy"].toDouble();
+		s.w  = o["w"].toDouble();  s.h  = o["h"].toDouble();
 		break;
 	case Shape_RotateRect:
-		s->cx = o["cx"].toDouble(); s->cy = o["cy"].toDouble();
-		s->w  = o["w"].toDouble();  s->h  = o["h"].toDouble();
-		s->angle = o["angle"].toDouble();
+		s.cx = o["cx"].toDouble(); s.cy = o["cy"].toDouble();
+		s.w  = o["w"].toDouble();  s.h  = o["h"].toDouble();
+		s.angle = o["angle"].toDouble();
 		break;
 	case Shape_Circle:
-		s->cx = o["cx"].toDouble(); s->cy = o["cy"].toDouble(); s->r = o["r"].toDouble();
+		s.cx = o["cx"].toDouble(); s.cy = o["cy"].toDouble(); s.r = o["r"].toDouble();
 		break;
 	case Shape_Ellipse:
-		s->cx = o["cx"].toDouble(); s->cy = o["cy"].toDouble();
-		s->r  = o["r1"].toDouble(); s->r2 = o["r2"].toDouble();
-		s->angle = o["angle"].toDouble();
+		s.cx = o["cx"].toDouble(); s.cy = o["cy"].toDouble();
+		s.r  = o["r1"].toDouble(); s.r2 = o["r2"].toDouble();
+		s.angle = o["angle"].toDouble();
 		break;
 	case Shape_Ring:
-		s->cx = o["cx"].toDouble(); s->cy = o["cy"].toDouble();
-		s->r  = o["r1"].toDouble(); s->r2 = o["r2"].toDouble();
+		s.cx = o["cx"].toDouble(); s.cy = o["cy"].toDouble();
+		s.r  = o["r1"].toDouble(); s.r2 = o["r2"].toDouble();
 		break;
 	case Shape_Arc:
-		s->cx = o["cx"].toDouble(); s->cy = o["cy"].toDouble();
-		s->r  = o["rOuter"].toDouble(); s->r2 = o["rInner"].toDouble();
-		s->startAngle = o["startAngle"].toDouble();
-		s->endAngle   = o["endAngle"].toDouble();
-		s->span       = o["span"].toDouble();
+		s.cx = o["cx"].toDouble(); s.cy = o["cy"].toDouble();
+		s.r  = o["rOuter"].toDouble(); s.r2 = o["rInner"].toDouble();
+		s.startAngle = o["startAngle"].toDouble();
+		s.endAngle   = o["endAngle"].toDouble();
+		s.span       = o["span"].toDouble();
 		break;
 	case Shape_Polygon:
 	{
@@ -131,14 +132,15 @@ DrawShapeItem* RecipeIO::shapeFromJson(const QJsonObject& o)
 		{
 			const QJsonArray pt = v.toArray();
 			if (pt.size() >= 2)
-				s->pts.append(QPointF(pt[0].toDouble(), pt[1].toDouble()));
+				s.pts.append(QPointF(pt[0].toDouble(), pt[1].toDouble()));
 		}
 		break;
 	}
 	default:
 		break;
 	}
-	return s;
+	out = std::move(s);
+	return true;
 }
 
 QJsonObject RecipeIO::itemToJson(const InspectionItem& item)
