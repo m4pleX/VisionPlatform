@@ -2013,22 +2013,47 @@ void ImageCanvasView::setupFlowDock()
 	detectItem.rois.append(roiRef);
 	m_items.append(detectItem);
 
-	// 左侧流程树 Dock：可拖拽排序的 QTreeWidget + 底部「运行流程」按钮
+	// 左侧流程树 Dock：【树形结构】图像源为根 → 工具为子节点 → ROI 为工具孙节点。
+	// 层级体现数据流依赖：所有工具都吃图，故是图像源的子节点；ROI 是工具的输入。
 	m_flowTree = new QTreeWidget();
 	m_flowTree->setHeaderHidden(true);
-	m_flowTree->setDragDropMode(QAbstractItemView::InternalMove);   // 可拖拽排序
+	m_flowTree->setDragDropMode(QAbstractItemView::InternalMove);   // 工具子节点可拖拽排序
 	m_flowTree->setSelectionMode(QAbstractItemView::SingleSelection);
 
-	// 默认流程：定位(blob) -> 检测(灰度缺陷) 顺序两步（端到端最小数据流）。
-	// 定位产出 Pose2D，检测吃 ROI 子图（当前为人工 ROI，未来由定位校正跟随）；
-	// 用户可按需通过拖拽排序 / 后续的「增删工具」扩展。
-	auto addTool = [this](ToolCategory cat, const QString& algo, const QString& display) {
-		QTreeWidgetItem* item = new QTreeWidgetItem();
-		item->setText(0, QStringLiteral("%1 · %2").arg(toolCategoryName(cat), display));
-		item->setData(0, Qt::UserRole, algo);           // 算法 tag
-		item->setData(0, Qt::UserRole + 1, static_cast<int>(cat)); // 大类
-		item->setFlags(item->flags() | Qt::ItemIsDragEnabled);
-		m_flowTree->addTopLevelItem(item);
+	// 节点类型标记（存于 UserRole+2）：0=图像源根，1=工具，2=ROI（工具的输入）
+	const int kNodeTypeRole = Qt::UserRole + 2;
+	const int kTypeSource   = 0;
+	const int kTypeTool     = 1;
+	const int kTypeRoi      = 2;
+
+	// ① 图像源根节点（唯一顶层；单源固定 id=image0，多源时扩展为多个根）。
+	QTreeWidgetItem* srcNode = new QTreeWidgetItem();
+	srcNode->setText(0, QStringLiteral("图像源 · %1").arg(m_imageSource.name.isEmpty() ? m_imageSource.id : m_imageSource.name));
+	srcNode->setData(0, kNodeTypeRole, kTypeSource);
+	srcNode->setFlags(srcNode->flags() & ~Qt::ItemIsDragEnabled);   // 根不可拖拽
+	m_flowTree->addTopLevelItem(srcNode);
+	m_flowTree->expandItem(srcNode);
+
+	// ② 工具子节点（挂在图像源下），并为其绑定 ROI 生成孙节点。
+	auto addTool = [&](ToolCategory cat, const QString& algo, const QString& display) {
+		QTreeWidgetItem* tool = new QTreeWidgetItem(srcNode);
+		tool->setText(0, QStringLiteral("%1 · %2").arg(toolCategoryName(cat), display));
+		tool->setData(0, Qt::UserRole, algo);                            // 算法 tag
+		tool->setData(0, Qt::UserRole + 1, static_cast<int>(cat));       // 大类
+		tool->setData(0, kNodeTypeRole, kTypeTool);
+		tool->setFlags(tool->flags() | Qt::ItemIsDragEnabled);           // 工具可拖拽排序
+		// ③ 该工具绑定的 ROI 作为孙节点（只读展示绑定，写回交互留待后续）。
+		for (const InspectionItem& it : m_items)
+		{
+			if (it.algorithmType != algo) continue;
+			for (const RoiRef& r : it.rois)
+			{
+				QTreeWidgetItem* roi = new QTreeWidgetItem(tool);
+				roi->setText(0, QStringLiteral("输入ROI: %1").arg(r.roiId));
+				roi->setData(0, kNodeTypeRole, kTypeRoi);
+				roi->setFlags(roi->flags() & ~Qt::ItemIsDragEnabled);    // ROI 节点不可拖拽
+			}
+		}
 	};
 
 	addTool(Category_Locate,  "blobLocator", QStringLiteral("blob 定位"));
@@ -2057,15 +2082,31 @@ QList<ToolStep> ImageCanvasView::collectSteps() const
 	if (!m_flowTree)
 		return steps;
 
-	const int n = m_flowTree->topLevelItemCount();
-	for (int i = 0; i < n; ++i)
+	// 树形：遍历所有【图像源根节点】下的【工具子节点】，按顺序收集为执行步骤。
+	// 跳过图像源根(kTypeSource=0)与 ROI 孙节点(kTypeRoi=2)，只取工具(kTypeTool=1)。
+	const int kNodeTypeRole = Qt::UserRole + 2;
+	const int kTypeSource   = 0;
+	const int kTypeTool     = 1;
+
+	const int srcCount = m_flowTree->topLevelItemCount();
+	for (int s = 0; s < srcCount; ++s)
 	{
-		QTreeWidgetItem* item = m_flowTree->topLevelItem(i);
-		ToolStep step;
-		step.algorithm = item->data(0, Qt::UserRole).toString();
-		step.category  = static_cast<ToolCategory>(item->data(0, Qt::UserRole + 1).toInt());
-		step.id        = step.algorithm + QString::number(i);
-		steps.append(step);
+		QTreeWidgetItem* srcNode = m_flowTree->topLevelItem(s);
+		if (srcNode->data(0, kNodeTypeRole).toInt() != kTypeSource)
+			continue;
+
+		const int toolCount = srcNode->childCount();
+		for (int i = 0; i < toolCount; ++i)
+		{
+			QTreeWidgetItem* item = srcNode->child(i);
+			if (item->data(0, kNodeTypeRole).toInt() != kTypeTool)
+				continue;
+			ToolStep step;
+			step.algorithm = item->data(0, Qt::UserRole).toString();
+			step.category  = static_cast<ToolCategory>(item->data(0, Qt::UserRole + 1).toInt());
+			step.id        = step.algorithm + QString::number(steps.size());
+			steps.append(step);
+		}
 	}
 	return steps;
 }
