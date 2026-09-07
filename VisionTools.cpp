@@ -30,25 +30,28 @@ ToolResult GrayDefectTool::run(const ToolContext& ctx)
 		return r;
 	}
 
-	// 阶段1：若用户画了矩形 ROI，则在 ROI 子图内检测；否则整图检测。
-	// 这验证「人工几何进入算法」的链路，坐标回贴到整图。
+	// 【显式 ROI 绑定】按 ctx.roiIds 精确匹配"该工具消费的 ROI"，不再「找第一个矩形」。
+	// ctx.roiIds 来自 InspectionItem::roiIds（检测项声明"该算法用哪些 ROI"）。
+	// 命中第一个 id 匹配的矩形 ROI 即裁剪；未声明/未命中则回退整图。
 	cv::Mat sub = *ctx.image;
 	QPoint roiOrigin(0, 0);
-	if (!ctx.shapes.isEmpty())
+	for (const QString& roiId : ctx.roiIds)
 	{
-		// 找第一个矩形 ROI 作为检测区域
+		bool found = false;
 		for (const DrawShapeItem& s : ctx.shapes)
 		{
-			if (s.type != Shape_Rect)
+			if (s.id != roiId || s.type != Shape_Rect)
 				continue;
 			QRect roi;
 			if (ShapeGeometry::cropRect(s, ctx.image->cols, ctx.image->rows, roi))
 			{
 				sub = (*ctx.image)(cv::Rect(roi.x(), roi.y(), roi.width(), roi.height())).clone();
 				roiOrigin = QPoint(roi.x(), roi.y());
+				found = true;
 			}
 			break;
 		}
+		if (found) break;
 	}
 
 	r.data = GrayDefectDetector::detect(sub);

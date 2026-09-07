@@ -1200,7 +1200,10 @@ void ImageCanvasView::slotLoadRecipe()
 	{
 		DrawShapeItem s(Shape_Rect);
 		if (RecipeIO::shapeFromJson(v.toObject(), s))
+		{
+			ensureShapeId(s);   /*  旧方案文件可能缺 id，兜底赋稳定 id */
 			m_shapes.append(std::move(s));
+		}
 	}
 
 	// 显示当前下拉框对应的图形（无则显示第一个）
@@ -1444,6 +1447,7 @@ void ImageCanvasView::applyParamAndRedraw() {
 	if (shapeIdx < 0) {
 		m_shapes.append(DrawShapeItem(type));
 		shapeIdx = m_shapes.size() - 1;
+		ensureShapeId(m_shapes[shapeIdx]);   /*  赋稳定 id，供 roiIds 绑定引用 */
 	}
 
 	DrawShapeItem& shape = m_shapes[shapeIdx];
@@ -1534,7 +1538,7 @@ void ImageCanvasView::commitCircle()
 	if (radius < 1.5) return;
 
 	int shapeIdx = findShapeByType(Shape_Circle);
-	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Circle)); shapeIdx = m_shapes.size() - 1; }
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Circle)); shapeIdx = m_shapes.size() - 1; ensureShapeId(m_shapes[shapeIdx]); }
 	DrawShapeItem& shape = m_shapes[shapeIdx];
 	shape.cx = cx; shape.cy = cy; shape.r = radius;
 
@@ -1558,7 +1562,7 @@ void ImageCanvasView::commitRing()
 	if (r1 < 1.5 || r2 < 1.5) return;
 
 	int shapeIdx = findShapeByType(Shape_Ring);
-	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Ring)); shapeIdx = m_shapes.size() - 1; }
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Ring)); shapeIdx = m_shapes.size() - 1; ensureShapeId(m_shapes[shapeIdx]); }
 	DrawShapeItem& shape = m_shapes[shapeIdx];
 	shape.cx = cx; shape.cy = cy; shape.r = r1; shape.r2 = r2;
 
@@ -1575,7 +1579,7 @@ void ImageCanvasView::commitArc()
 	double aA=m_arcStartAngle,span=m_arcEndAngle;
 	double rOuter=std::max(r1,r2),rInner=std::min(r1,r2);
 	int shapeIdx=findShapeByType(Shape_Arc);
-	if(shapeIdx<0){m_shapes.append(DrawShapeItem(Shape_Arc));shapeIdx=m_shapes.size()-1;}
+	if(shapeIdx<0){m_shapes.append(DrawShapeItem(Shape_Arc));shapeIdx=m_shapes.size()-1;ensureShapeId(m_shapes[shapeIdx]);}
 	DrawShapeItem& shape=m_shapes[shapeIdx];
 	shape.cx=cx;shape.cy=cy;
 	shape.r=rOuter;shape.r2=rInner;
@@ -1588,7 +1592,7 @@ void ImageCanvasView::commitPolygon()
 {
 	if(m_tempPolyPts.size()<3)return;
 	int shapeIdx=findShapeByType(Shape_Polygon);
-	if(shapeIdx<0){m_shapes.append(DrawShapeItem(Shape_Polygon));shapeIdx=m_shapes.size()-1;}
+	if(shapeIdx<0){m_shapes.append(DrawShapeItem(Shape_Polygon));shapeIdx=m_shapes.size()-1;ensureShapeId(m_shapes[shapeIdx]);}
 	DrawShapeItem& shape=m_shapes[shapeIdx];
 	shape.pts=m_tempPolyPts;
 	// 清理绘制标记
@@ -1617,7 +1621,7 @@ void ImageCanvasView::commitRect()
 	if (w < 3 || h < 3) return;
 
 	int shapeIdx = findShapeByType(Shape_Rect);
-	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Rect)); shapeIdx = m_shapes.size() - 1; }
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Rect)); shapeIdx = m_shapes.size() - 1; ensureShapeId(m_shapes[shapeIdx]); }
 	DrawShapeItem& shape = m_shapes[shapeIdx];
 	shape.cx = cx; shape.cy = cy; shape.w = w; shape.h = h;
 
@@ -1637,7 +1641,7 @@ void ImageCanvasView::commitRotatedRect()
 	if (w < 3 || h < 3) return;
 
 	int shapeIdx = findShapeByType(Shape_RotateRect);
-	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_RotateRect)); shapeIdx = m_shapes.size() - 1; }
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_RotateRect)); shapeIdx = m_shapes.size() - 1; ensureShapeId(m_shapes[shapeIdx]); }
 	DrawShapeItem& shape = m_shapes[shapeIdx];
 	shape.cx = cx; shape.cy = cy; shape.w = w; shape.h = h; shape.angle = 0.0;
 
@@ -1656,7 +1660,7 @@ void ImageCanvasView::commitEllipse()
 	if (r1 < 1.5 || r2 < 1.5) return;
 
 	int shapeIdx = findShapeByType(Shape_Ellipse);
-	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Ellipse)); shapeIdx = m_shapes.size() - 1; }
+	if (shapeIdx < 0) { m_shapes.append(DrawShapeItem(Shape_Ellipse)); shapeIdx = m_shapes.size() - 1; ensureShapeId(m_shapes[shapeIdx]); }
 	DrawShapeItem& shape = m_shapes[shapeIdx];
 	shape.cx = cx; shape.cy = cy; shape.r = r1; shape.r2 = r2; shape.angle = 0.0;
 
@@ -1681,6 +1685,22 @@ int ImageCanvasView::findShapeByType(DrawShapeType type)
 	for (int i = 0; i < m_shapes.size(); ++i)
 		if (m_shapes.at(i).type == type) return i;
 	return -1;
+}
+
+void ImageCanvasView::ensureShapeId(DrawShapeItem& s)
+{
+	if (!s.id.isEmpty()) return;   /*  已有 id（如来自方案加载），不覆盖 */
+	switch (s.type)
+	{
+	case Shape_Rect:       s.id = QStringLiteral("rect");       break;
+	case Shape_RotateRect: s.id = QStringLiteral("rotated_rect"); break;
+	case Shape_Circle:     s.id = QStringLiteral("circle");     break;
+	case Shape_Ellipse:    s.id = QStringLiteral("ellipse");    break;
+	case Shape_Ring:       s.id = QStringLiteral("ring");       break;
+	case Shape_Arc:        s.id = QStringLiteral("arc");        break;
+	case Shape_Polygon:    s.id = QStringLiteral("polygon");    break;
+	default:               s.id = QStringLiteral("shape");      break;
+	}
 }
 
 // ===== 图形构建 =====
@@ -1980,6 +2000,15 @@ void ImageCanvasView::slotRunCaliper()
 
 void ImageCanvasView::setupFlowDock()
 {
+	// 【InspectionItem 落地】默认检测项：声明"灰度缺陷检测 使用 id=rect 的矩形 ROI"。
+	// 这是「工具 ↔ ROI」显式绑定的权威来源；UI 配置检测项留待后续。
+	InspectionItem detectItem;
+	detectItem.id            = QStringLiteral("inspect1");
+	detectItem.name          = QStringLiteral("灰度缺陷检测");
+	detectItem.algorithmType = QStringLiteral("grayDefect");
+	detectItem.roiIds        = QStringList{ QStringLiteral("rect") };   /*  绑定人工矩形 ROI */
+	m_items.append(detectItem);
+
 	// 左侧流程树 Dock：可拖拽排序的 QTreeWidget + 底部「运行流程」按钮
 	m_flowTree = new QTreeWidget();
 	m_flowTree->setHeaderHidden(true);
@@ -2072,6 +2101,18 @@ void ImageCanvasView::slotRunFlow()
 		{
 			lines << QStringLiteral("%1：未找到工具").arg(s.algorithm);
 			continue;
+		}
+
+		// 【显式 ROI 绑定】按检测项声明填充本步骤消费的 ROI id（InspectionItem::roiIds 落地）。
+		// 先清空，避免继承上一工具的 roiIds；再找到 algorithmType 匹配的检测项填入。
+		ctx.roiIds.clear();
+		for (const InspectionItem& item : m_items)
+		{
+			if (item.algorithmType == s.algorithm)
+			{
+				ctx.roiIds = item.roiIds;
+				break;
+			}
 		}
 
 		tool->loadParams(s.params);

@@ -36,6 +36,7 @@
 #include "ui_ImageCanvasView.h"
 #include "DrawShapeData.h"
 #include "ImageSource.h"
+#include "InspectionItem.h"
 #include "RecipeIO.h"
 #include "ToolbarController.h"
 #include "DetectionResultModel.h"
@@ -230,6 +231,11 @@ private:
 	/*  按类型查找形状索引（单实例模型：返回首个匹配，未找到返回 -1） */
 	int findShapeByType(DrawShapeType type);
 
+	/*  为形状赋稳定 id（单实例模型：每类型一个 id，如 "rect"/"circle"）。
+	 *  id 是「工具 ↔ ROI」绑定的锚点，被 InspectionItem::roiIds 引用。
+	 *  仅当 s.id 为空时生成，避免覆盖已有 id（如从方案加载带来的 id）。 */
+	void ensureShapeId(DrawShapeItem& s);
+
 	QGraphicsEllipseItem* handleAt(const QPointF& scenePos) const;
 
 	/*  拖拽编辑后统一刷新控制点位置与参数面板（等价于原 update*FromHandle 末尾副作用） */
@@ -256,6 +262,11 @@ private:
 	QDockWidget* m_flowDock   = nullptr;   /*  流程树停靠面板 */
 	QTreeWidget* m_flowTree   = nullptr;   /*  流程树（可拖拽排序） */
 	QPushButton* m_btnRunFlow = nullptr;   /*  运行流程按钮 */
+
+	/*  检测项列表：InspectionItem 落地 —— 声明"哪个算法用哪些 ROI(roiIds)"。
+	 *  roiIds 是「工具 ↔ ROI」显式绑定的权威来源，取代旧版"找第一个矩形"的写死。
+	 *  当前默认建一份（grayDefect 用 "rect"），UI 配置留待后续。 */
+	QList<InspectionItem> m_items;
 
 	/*  初始化流程树 Dock（构造末尾调用） */
 	void setupFlowDock();

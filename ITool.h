@@ -15,6 +15,7 @@
 #pragma once
 
 #include <QString>
+#include <QStringList>
 #include <QList>
 #include <QHash>
 #include <QJsonObject>
@@ -44,9 +45,15 @@ struct ToolContext
 
 	/*  ===== 用户输入几何 ===== */
 	/*  shapes：值语义（存值不存指针，const 才能层层防篡改）。
-	 *  【迁移标记】同样存在"哪个工具用哪个 ROI"的显式绑定缺口，
-	 *  未来经 InspectionItem.roiIds 落地（见 InspectionItem.h）。 */
+	 *  每个 shape 的 DrawShapeItem::id 是"工具 ↔ ROI"绑定的锚点。 */
 	QList<DrawShapeItem> shapes;
+
+	/*  ===== 本工具消费的 ROI 显式绑定 ===== */
+	/*  roiIds：本次运行【本工具】应消费的 ROI id 列表（对应 DrawShapeItem::id）。
+	 *  来源 = InspectionItem::roiIds（检测项声明"该算法用哪些 ROI"）。
+	 *  工具据此【按 id 精确取】ctx.shapes 中匹配的形状，取代旧版隐式"找第一个矩形"。
+	 *  空 = 未声明（工具自行回退整图/默认行为）。 */
+	QStringList roiIds;
 
 	/*  ===== 上游结果 ===== */
 	/*  值语义，按 toolId 作 Key 取出（下游据 name 精准定位上游产出） */
