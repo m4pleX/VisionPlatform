@@ -23,6 +23,7 @@
 
 #include "AlgorithmResult.h"
 #include "DrawShapeData.h"
+#include "ImageSource.h"
 #include "ToolDefinition.h"
 
 /* ========================================================================
@@ -30,16 +31,32 @@
  * ======================================================================== */
 struct ToolContext
 {
-	/*  当前图像：智能指针共享 + const 只读（零拷贝贯穿，禁止复制像素/改图像） */
+	/*  ===== 图像源（演进为多实例一等公民） ===== */
+	/*  imageSources：本次运行的全部图像源（含身份 id），可多相机/多图并存。
+	 *  工具据此声明"我消费 imageSources[id] 的图像"，取代旧版隐式"取第一张"。
+	 *  数据零拷贝只读贯穿（shared_ptr<const cv::Mat>）。 */
+	QHash<QString, ImageData> imageSources;
+
+	/*  image：兼容字段，等价 imageSources[""]（无 id 单图场景），
+	 *  与现有工具 ctx.image 调用无缝衔接；多图像源优先用 imageSources。
+	 *  【迁移标记】2016-09：保留以平滑过渡，工具逐个迁移到 imageSources 后废弃。 */
 	std::shared_ptr<const cv::Mat> image;
 
-	/*  用户输入几何（ROI/测量基准）：值语义（存值不存指针，const 才能层层防篡改） */
+	/*  ===== 用户输入几何 ===== */
+	/*  shapes：值语义（存值不存指针，const 才能层层防篡改）。
+	 *  【迁移标记】同样存在"哪个工具用哪个 ROI"的显式绑定缺口，
+	 *  未来经 InspectionItem.roiIds 落地（见 InspectionItem.h）。 */
 	QList<DrawShapeItem> shapes;
 
-	/*  上游结果：值语义，按 toolId 作 Key 取出（下游据 name 精准定位上游产出） */
+	/*  ===== 上游结果 ===== */
+	/*  值语义，按 toolId 作 Key 取出（下游据 name 精准定位上游产出） */
 	QHash<QString, AlgorithmResult> results;
 
-	/*  未来扩展点：标定矩阵、相机源等在此追加，不影响接口签名 */
+	/*  未来扩展点（不影响接口签名，需求落地时追加）：
+	 *    - acquireSessions: QHash<QString, AcquireSession> 采集会话运行态（断连/错误/重连）
+	 *    - buffers:         QHash<QString, ImageBuffer>    单源多帧缓冲（异步采集/连拍）
+	 *    - 标定矩阵已在 ImageSource.calibration 占位，无需在此重复。
+	 *  结构已定义于 ImageSource.h，待采集层真实落地后再接入本上下文。 */
 };
 
 /* ========================================================================

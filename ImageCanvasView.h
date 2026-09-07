@@ -35,6 +35,7 @@
 #include <QtWidgets/QMainWindow>
 #include "ui_ImageCanvasView.h"
 #include "DrawShapeData.h"
+#include "ImageSource.h"
 #include "RecipeIO.h"
 #include "ToolbarController.h"
 #include "DetectionResultModel.h"
@@ -109,6 +110,11 @@ private:
 	QGraphicsLineItem*    m_spotAbsorber  = nullptr;  /*  OpenGL 残影吸收线 */
 	double                m_scaleValue    = 1.0;
 	QString               m_imagePath;               /*  当前图像路径 */
+
+	/*  ====================== 图像源（顶层身份，多实例底座） ====================== */
+	/*  当前激活图像源的身份/配置（持久）；本次像素数据在运行经 ImageData 零拷贝传入 ctx。
+	 *  未来多相机/多图场景下扩展为 QHash<id, ImageSource>。 */
+	ImageSource           m_imageSource;
 
 	bool m_showCenterCross = false;
 	bool m_showControlPoints = true;

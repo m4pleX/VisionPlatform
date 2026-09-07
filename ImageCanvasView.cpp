@@ -1062,6 +1062,11 @@ bool ImageCanvasView::loadImageFromPath(const QString& path)
 	if (loadImg.isNull()) return false;
 	QPixmap pixmap = QPixmap::fromImage(loadImg);
 	m_pixmapItem->setPixmap(pixmap);
+	// 图像源身份（持久）：文件源，记录出处路径与展示名（顶层数据结构的落地入口）。
+	m_imageSource.id   = QStringLiteral("image0");   /*  单图源固定 id；多源时上层生成 */
+	m_imageSource.name = QFileInfo(path).completeBaseName();
+	m_imageSource.type = ImageSourceType::File;
+	m_imageSource.path = path;
 	// 【销毁点】换图使旧图检测结果失效，清空数据层 + 渲染层。
 	// 覆盖 slotLoadImage（换图）与 slotLoadRecipe（加载方案）两个场景。
 	m_detectModel.clear();
@@ -2021,6 +2026,10 @@ void ImageCanvasView::slotRunFlow()
 	// 只读上下文：图 + 用户几何（值拷贝：人工绘制的 ROI/基准线）+ 上游结果（初始空）
 	ToolContext ctx;
 	ctx.image = imageMat;
+	// 图像源（顶层身份）：以 m_imageSource.id 为 key 挂入，工具可据 id 精准引用；
+	// sourceId 同步填同一 id，保证 ImageData 脱离容器后仍可追溯来源。
+	// 兼容字段 ctx.image 仍指向同一份数据，保证旧工具 ctx.image 语义不变。
+	ctx.imageSources.insert(m_imageSource.id, ImageData::fromMat(imageMat, m_imageSource.id));
 	ctx.shapes = m_shapes;   // 值语义：直接拷贝，与 m_shapes 隔离（tools 侧只读）
 
 	QList<ToolStep> steps = collectSteps();

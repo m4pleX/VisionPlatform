@@ -36,6 +36,7 @@ add_executable(VisionPlatform
         ImageCanvasView.cpp
         ImageCanvasView.h
         ImageCanvasView.qrc
+        ImageSource.h
         ImageCanvasView.ui
         main.cpp
         ParamPanelWidget.cpp
