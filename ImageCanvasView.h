@@ -232,7 +232,7 @@ private:
 	int findShapeByType(DrawShapeType type);
 
 	/*  为形状赋稳定 id（单实例模型：每类型一个 id，如 "rect"/"circle"）。
-	 *  id 是「工具 ↔ ROI」绑定的锚点，被 InspectionItem::roiIds 引用。
+	 *  id 是「工具 ↔ ROI」绑定的锚点，被 InspectionItem::RoiRef::roiId 引用。
 	 *  仅当 s.id 为空时生成，避免覆盖已有 id（如从方案加载带来的 id）。 */
 	void ensureShapeId(DrawShapeItem& s);
 
@@ -263,9 +263,10 @@ private:
 	QTreeWidget* m_flowTree   = nullptr;   /*  流程树（可拖拽排序） */
 	QPushButton* m_btnRunFlow = nullptr;   /*  运行流程按钮 */
 
-	/*  检测项列表：InspectionItem 落地 —— 声明"哪个算法用哪些 ROI(roiIds)"。
-	 *  roiIds 是「工具 ↔ ROI」显式绑定的权威来源，取代旧版"找第一个矩形"的写死。
-	 *  当前默认建一份（grayDefect 用 "rect"），UI 配置留待后续。 */
+	/*  检测项列表：InspectionItem 落地 —— 声明"哪个算法用哪些 ROI 及其用法"。
+	 *  每个 RoiRef = (roiId + followFrom)，是「工具 ↔ ROI」显式绑定的权威来源，
+	 *  取代旧版"找第一个矩形"的写死；followFrom 承载"跟随校正"分支（B 阶段用）。
+	 *  当前默认建一份（grayDefect 用 "rect"，固定不跟随），UI 配置留待后续。 */
 	QList<InspectionItem> m_items;
 
 	/*  初始化流程树 Dock（构造末尾调用） */

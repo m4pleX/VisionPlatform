@@ -50,9 +50,10 @@ struct ToolContext
 
 	/*  ===== 本工具消费的 ROI 显式绑定 ===== */
 	/*  roiIds：本次运行【本工具】应消费的 ROI id 列表（对应 DrawShapeItem::id）。
-	 *  来源 = InspectionItem::roiIds（检测项声明"该算法用哪些 ROI"）。
+	 *  来源 = InspectionItem::rois 的 roiId 提取（检测项声明"该算法用哪些 ROI"）。
 	 *  工具据此【按 id 精确取】ctx.shapes 中匹配的形状，取代旧版隐式"找第一个矩形"。
-	 *  空 = 未声明（工具自行回退整图/默认行为）。 */
+	 *  空 = 未声明（工具自行回退整图/默认行为）。
+	 *  【注】"跟随校正"维度在 InspectionItem::RoiRef::followFrom 中，B 阶段 applyPose 时单独处理。 */
 	QStringList roiIds;
 
 	/*  ===== 上游结果 ===== */

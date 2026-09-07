@@ -13,7 +13,8 @@
  *    常见形状键: rect/rotatedRect/circle/ellipse/ring 用 cx,cy,w,h,r,r1,r2,angle；
  *                arc 用 cx,cy,rOuter,rInner,startAngle,endAngle,span；
  *                polygon 用 points(点数组)。
- *    检测项级（预留，供多算法/多 ROI 绑定）: { "id", "name", "algorithmType", "roiIds", "params", "passRule" }
+ *    检测项级: { "id", "name", "algorithmType", "rois":[{ "roiId", "followFrom"(可选) }], "params", "passRule" }
+ *      - rois 为 RoiRef 数组：roiId 绑定 ROI，followFrom 空=固定 / 非空=继承该定位工具的校正
  */
 #pragma once
 

@@ -150,10 +150,17 @@ QJsonObject RecipeIO::itemToJson(const InspectionItem& item)
 	o["name"]          = item.name;
 	o["algorithmType"] = item.algorithmType;
 
-	QJsonArray roiIds;
-	for (const QString& id : item.roiIds)
-		roiIds.append(id);
-	o["roiIds"] = roiIds;
+	// RoiRef 序列化：{ roiId, followFrom(可选，空不写) }，含"跟随"持久化。
+	QJsonArray rois;
+	for (const RoiRef& r : item.rois)
+	{
+		QJsonObject ro;
+		ro["roiId"] = r.roiId;
+		if (!r.followFrom.isEmpty())
+			ro["followFrom"] = r.followFrom;
+		rois.append(ro);
+	}
+	o["rois"] = rois;
 
 	o["params"]   = item.params;
 	o["passRule"] = item.passRule;
@@ -167,9 +174,16 @@ InspectionItem RecipeIO::itemFromJson(const QJsonObject& o)
 	item.name          = o["name"].toString();
 	item.algorithmType = o["algorithmType"].toString();
 
-	const QJsonArray roiIds = o["roiIds"].toArray();
-	for (const auto& v : roiIds)
-		item.roiIds.append(v.toString());
+	// RoiRef 反序列化。
+	const QJsonArray rois = o["rois"].toArray();
+	for (const auto& v : rois)
+	{
+		const QJsonObject ro = v.toObject();
+		RoiRef ref;
+		ref.roiId      = ro["roiId"].toString();
+		ref.followFrom = ro["followFrom"].toString();
+		item.rois.append(ref);
+	}
 
 	item.params   = o["params"].toObject();
 	item.passRule = o["passRule"].toObject();

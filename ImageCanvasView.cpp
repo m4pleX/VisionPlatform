@@ -1447,7 +1447,7 @@ void ImageCanvasView::applyParamAndRedraw() {
 	if (shapeIdx < 0) {
 		m_shapes.append(DrawShapeItem(type));
 		shapeIdx = m_shapes.size() - 1;
-		ensureShapeId(m_shapes[shapeIdx]);   /*  赋稳定 id，供 roiIds 绑定引用 */
+		ensureShapeId(m_shapes[shapeIdx]);   /*  赋稳定 id，供 RoiRef::roiId 绑定引用 */
 	}
 
 	DrawShapeItem& shape = m_shapes[shapeIdx];
@@ -2002,11 +2002,15 @@ void ImageCanvasView::setupFlowDock()
 {
 	// 【InspectionItem 落地】默认检测项：声明"灰度缺陷检测 使用 id=rect 的矩形 ROI"。
 	// 这是「工具 ↔ ROI」显式绑定的权威来源；UI 配置检测项留待后续。
+	// RoiRef{ roiId="rect", followFrom="" }：固定 ROI（不跟随），跟随维度留待 B 阶段。
 	InspectionItem detectItem;
 	detectItem.id            = QStringLiteral("inspect1");
 	detectItem.name          = QStringLiteral("灰度缺陷检测");
 	detectItem.algorithmType = QStringLiteral("grayDefect");
-	detectItem.roiIds        = QStringList{ QStringLiteral("rect") };   /*  绑定人工矩形 ROI */
+	RoiRef roiRef;
+	roiRef.roiId      = QStringLiteral("rect");
+	roiRef.followFrom = QString();   /*  空 = 固定，不跟随（B 阶段再支持继承定位） */
+	detectItem.rois.append(roiRef);
 	m_items.append(detectItem);
 
 	// 左侧流程树 Dock：可拖拽排序的 QTreeWidget + 底部「运行流程」按钮
@@ -2103,14 +2107,15 @@ void ImageCanvasView::slotRunFlow()
 			continue;
 		}
 
-		// 【显式 ROI 绑定】按检测项声明填充本步骤消费的 ROI id（InspectionItem::roiIds 落地）。
+		// 【显式 ROI 绑定】按检测项声明填充本步骤消费的 ROI id（InspectionItem.rois 落地）。
 		// 先清空，避免继承上一工具的 roiIds；再找到 algorithmType 匹配的检测项填入。
+		// 注：当前仅取 roiId（固定 ROI 裁剪）；followFrom 跟随校正留待 B 阶段 applyPose 闭环。
 		ctx.roiIds.clear();
 		for (const InspectionItem& item : m_items)
 		{
 			if (item.algorithmType == s.algorithm)
 			{
-				ctx.roiIds = item.roiIds;
+				ctx.roiIds = item.roiIdList();
 				break;
 			}
 		}

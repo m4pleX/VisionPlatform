@@ -31,7 +31,7 @@ ToolResult GrayDefectTool::run(const ToolContext& ctx)
 	}
 
 	// 【显式 ROI 绑定】按 ctx.roiIds 精确匹配"该工具消费的 ROI"，不再「找第一个矩形」。
-	// ctx.roiIds 来自 InspectionItem::roiIds（检测项声明"该算法用哪些 ROI"）。
+	// ctx.roiIds 来自 InspectionItem::rois（检测项声明"该算法用哪些 ROI"）。
 	// 命中第一个 id 匹配的矩形 ROI 即裁剪；未声明/未命中则回退整图。
 	cv::Mat sub = *ctx.image;
 	QPoint roiOrigin(0, 0);
