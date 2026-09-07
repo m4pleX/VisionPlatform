@@ -2,7 +2,17 @@
 
 #include <QImage>
 #include <opencv2/core.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+
+cv::Mat CvImageConverter::loadImage(const QString& path)
+{
+	// cv::imread 直读为 cv::Mat（主表示），不经 QImage 中转，避免多余转换。
+	// 读出的三通道为 BGR（OpenCV 默认），灰度图自动 CV_8UC1。
+	// 注意：路径含非 ASCII 字符时 imread 直读可能失败，故转本地 8bit 编码。
+	cv::Mat m = cv::imread(path.toLocal8Bit().constData(), cv::IMREAD_UNCHANGED);
+	return m;
+}
 
 cv::Mat CvImageConverter::toCvMat(const QImage& image)
 {

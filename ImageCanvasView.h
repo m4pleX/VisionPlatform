@@ -116,6 +116,11 @@ private:
 	 *  未来多相机/多图场景下扩展为 QHash<id, ImageSource>。 */
 	ImageSource           m_imageSource;
 
+	/*  当前图像数据（ImageData 流通票，cv::Mat 存储后端）：加载时产出并缓存，
+	 *  渲染与算法执行【共用同一份】（不再各自从 m_pixmapItem 重转 cv::Mat）。
+	 *  ⚠ 单一数据源：m_imageData 与 m_pixmapItem 指向同一像素，前者是权威主表示。 */
+	ImageData             m_imageData;
+
 	bool m_showCenterCross = false;
 	bool m_showControlPoints = true;
 	QGraphicsLineItem* m_crossH = nullptr;

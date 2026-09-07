@@ -22,6 +22,16 @@
  *      由 FileBatchMode 表达（对齐 HALCON：.seq 走 'File' 接口，非独立接口）；
  *    - 网络流 / RTSP 属安防监控协议，工业视觉走 GigE/U3V/CameraLink（本质是 Camera），
  *      【不】设为独立源类型。
+ *
+ *  ────────────────────────────────────────────────────────────────
+ *  【流通票决策】（2026-09 查证业界三标杆 HALCON / VisionPro / VisionMaster 定论）：
+ *    - 大厂【全部自建图像类型】（HImage / CogImage8Grey / CmvdImage），无一直接用
+ *      OpenCV Mat 或 Qt QImage 当主表示 —— 为的是【表达力 + 隔离底层 + 承载语义】。
+ *    - 本项目对齐：**ImageData 是流通票（canonical），cv::Mat 只是它的存储后端**。
+ *        工具层统一消费 ImageData / shared_ptr<const cv::Mat>，【禁止】直接依赖裸 cv::Mat 值；
+ *        QImage 仅是【渲染上屏】那一刻的显示桥接（零拷贝 + 显示时才 BGR→RGB）。
+ *    - 好处：将来接 HALCON / YOLO / UNet，只需在 ImageData 内部做边界转换，
+ *        工具层零改动；灰度图下 Mat↔HImage 接近零拷贝。
  * ======================================================================== */
 
 #pragma once

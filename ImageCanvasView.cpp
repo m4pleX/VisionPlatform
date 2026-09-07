@@ -55,6 +55,9 @@ ImageCanvasView::ImageCanvasView(QWidget* parent)
 {
 	ui.setupUi(this);
 
+	// 图像源唯一身份初始化：单图源固定 id（多源时由上层生成/管理）。
+	m_imageSource.id = QStringLiteral("image0");
+
 	m_scene = new QGraphicsScene(this);
 	m_painter = new ShapePainter(m_scene);
 	m_handleHelper = new ShapeHandleHelper(m_scene);
@@ -1058,15 +1061,25 @@ void ImageCanvasView::updateInfoLabel(const QPointF& scenePos, const QPoint& glo
 
 bool ImageCanvasView::loadImageFromPath(const QString& path)
 {
-	QImage loadImg(path);
-	if (loadImg.isNull()) return false;
-	QPixmap pixmap = QPixmap::fromImage(loadImg);
-	m_pixmapItem->setPixmap(pixmap);
-	// 图像源身份（持久）：文件源，记录出处路径与展示名（顶层数据结构的落地入口）。
-	m_imageSource.id   = QStringLiteral("image0");   /*  单图源固定 id；多源时上层生成 */
+	// 【流通票】cv::imread 直读 → cv::Mat（主表示），不经 QImage 中转。
+	cv::Mat img = CvImageConverter::loadImage(path);
+	if (img.empty()) return false;
+
+	// 构造 ImageData（流通票），shared_ptr 共享同一像素（零拷贝）。
+	auto matPtr = std::make_shared<cv::Mat>(std::move(img));
+	m_imageData = ImageData::fromMat(matPtr, m_imageSource.id);
+
+	// 填充图像源身份（持久）：文件源，记录出处与展示名。
+	// （id 在首次加载前为"image0"；此处随 path 变化刷新 name/path）
 	m_imageSource.name = QFileInfo(path).completeBaseName();
 	m_imageSource.type = ImageSourceType::File;
 	m_imageSource.path = path;
+
+	// 渲染上屏：ImageData → QImage（显示桥接，彩色图内部 BGR→RGB）→ QPixmap。
+	QImage qi = CvImageConverter::toQImage(*matPtr);
+	QPixmap pixmap = QPixmap::fromImage(qi);
+	m_pixmapItem->setPixmap(pixmap);
+
 	// 【销毁点】换图使旧图检测结果失效，清空数据层 + 渲染层。
 	// 覆盖 slotLoadImage（换图）与 slotLoadRecipe（加载方案）两个场景。
 	m_detectModel.clear();
@@ -1074,7 +1087,7 @@ bool ImageCanvasView::loadImageFromPath(const QString& path)
 	// 扩展 sceneRect，在图片外留出充足空间，避免中键拖拽时被限制在图片边界内
 	const qreal pad = 10000.0;
 	m_scene->setSceneRect(pixmap.rect().adjusted(-pad, -pad, pad, pad));
-	m_toolbar->updateResolution(loadImg.width(), loadImg.height());
+	m_toolbar->updateResolution(m_imageData.width(), m_imageData.height());
 	updateCenterCross();
 	slotZoomFit();
 	return true;
@@ -1746,12 +1759,13 @@ void ImageCanvasView::renderDetectOverlay()
 
 void ImageCanvasView::slotRunDetect()
 {
-	// 校验：必须有已加载图像（默认像素图为 1280x960 占位，也允许检测）
-	const QPixmap pm = m_pixmapItem->pixmap();
-
-	// QPixmap -> QImage -> cv::Mat，喂给真实缺陷检测器
-	const QImage qi = pm.toImage().convertToFormat(QImage::Format_RGB888);
-	const cv::Mat img = CvImageConverter::toCvMat(qi);
+	// 【流通票复用】直接取缓存 ImageData 的 cv::Mat（单一数据源，不再从 m_pixmapItem 重转）。
+	if (!m_imageData.isValid())
+	{
+		QMessageBox::information(this, QStringLiteral("运行检测"), QStringLiteral("请先加载图像"));
+		return;
+	}
+	const cv::Mat& img = *m_imageData.image;
 
 	// ROI 裁剪：以当前选中 shape 作为检测区域（无选中/ROI 无效则回退整图）
 	cv::Mat sub;
@@ -1807,9 +1821,13 @@ void ImageCanvasView::clearLocateResultOverlay()
 void ImageCanvasView::slotRunLocate()
 {
 	// 临时验证入口：喂图 → 定位 → 画出 Pose2D（中心十字 + 角度方向线）
-	const QPixmap pm = m_pixmapItem->pixmap();
-	const QImage qi = pm.toImage().convertToFormat(QImage::Format_RGB888);
-	const cv::Mat img = CvImageConverter::toCvMat(qi);
+	// 【流通票复用】直接取缓存 ImageData，不再从 m_pixmapItem 重转。
+	if (!m_imageData.isValid())
+	{
+		QMessageBox::information(this, QStringLiteral("定位"), QStringLiteral("请先加载图像"));
+		return;
+	}
+	const cv::Mat& img = *m_imageData.image;
 
 	AlgorithmResult result = PoseLocator::locate(img);
 
@@ -1872,9 +1890,13 @@ void ImageCanvasView::slotRunCaliper()
 {
 	// 临时验证入口：以图像中部构造一个竖直卡尺框（长轴竖直、搜索方向水平），
 	// 检测图中的竖直线边缘，画出拟合直线 + 边缘散点。
-	const QPixmap pm = m_pixmapItem->pixmap();
-	const QImage qi = pm.toImage().convertToFormat(QImage::Format_RGB888);
-	const cv::Mat img = CvImageConverter::toCvMat(qi);
+	// 【流通票复用】直接取缓存 ImageData，不再从 m_pixmapItem 重转。
+	if (!m_imageData.isValid())
+	{
+		QMessageBox::information(this, QStringLiteral("卡尺"), QStringLiteral("请先加载图像"));
+		return;
+	}
+	const cv::Mat& img = *m_imageData.image;
 
 	const double cx = img.cols / 2.0;
 	// 卡尺框长轴：竖直方向，从 (cx, cy0) 到 (cx, cy1)，覆盖图像中部 80%
@@ -2017,19 +2039,21 @@ QList<ToolStep> ImageCanvasView::collectSteps() const
 
 void ImageCanvasView::slotRunFlow()
 {
-	const QPixmap pm = m_pixmapItem->pixmap();
-	const QImage qi = pm.toImage().convertToFormat(QImage::Format_RGB888);
-
-	// 图像句柄：shared_ptr<const cv::Mat>，只读引用贯穿（零拷贝，不复制像素）
-	auto imageMat = std::make_shared<cv::Mat>(CvImageConverter::toCvMat(qi));
+	// 【流通票复用】直接从缓存 m_imageData 取图，不再从 m_pixmapItem 重转 cv::Mat。
+	// 单一数据源：加载时产出的 ImageData 是权威主表示，渲染与算法共用。
+	if (!m_imageData.isValid())
+	{
+		QMessageBox::information(this, QStringLiteral("运行流程"), QStringLiteral("请先加载图像"));
+		return;
+	}
 
 	// 只读上下文：图 + 用户几何（值拷贝：人工绘制的 ROI/基准线）+ 上游结果（初始空）
 	ToolContext ctx;
-	ctx.image = imageMat;
 	// 图像源（顶层身份）：以 m_imageSource.id 为 key 挂入，工具可据 id 精准引用；
-	// sourceId 同步填同一 id，保证 ImageData 脱离容器后仍可追溯来源。
-	// 兼容字段 ctx.image 仍指向同一份数据，保证旧工具 ctx.image 语义不变。
-	ctx.imageSources.insert(m_imageSource.id, ImageData::fromMat(imageMat, m_imageSource.id));
+	// sourceId 与 key 一致，保证 ImageData 脱离容器后仍可追溯来源。
+	ctx.imageSources.insert(m_imageSource.id, m_imageData);
+	// 兼容字段 ctx.image：指向同一份像素（零拷贝），保证旧工具 ctx.image 语义不变。
+	ctx.image = m_imageData.image;
 	ctx.shapes = m_shapes;   // 值语义：直接拷贝，与 m_shapes 隔离（tools 侧只读）
 
 	QList<ToolStep> steps = collectSteps();
